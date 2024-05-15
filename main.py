@@ -34,7 +34,6 @@ app.add_middleware(
 def translate_to_tamil(text):
     translator = Translator()
     translated_text = translator.translate(text, src='en', dest='ta')
-    print("translated_text",translated_text)
     return translated_text.text
 
 def recognize_speech(audio_file):
@@ -105,7 +104,8 @@ async def translate_audio(file: UploadFile = File(...)):
         # Convert the translated Tamil text to audio
         output_audio_file = os.path.join(UPLOAD_DIR, "translated_audio.mp3")
         text_to_speech_tamil(tamil_text, output_audio_file)
-
+        response = FileResponse(output_audio_file, media_type="audio/mp3")
+        print("audio_",type(response))
         # Return the translated audio file
         return FileResponse(output_audio_file, media_type="audio/mp3")
 
@@ -119,6 +119,7 @@ async def translate_audio(file: UploadFile = File(...)):
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 @app.post("/translate_text/")
 async def translate_text(input_text: TextInput):
     try:
@@ -130,8 +131,9 @@ async def translate_text(input_text: TextInput):
         text_to_speech_tamil(tamil_text, output_text_audio_file)
 
         # Return the translated audio file
-        return FileResponse(output_text_audio_file, media_type="audio/mp3")
-
+        response = FileResponse(output_text_audio_file, media_type="audio/mp3")
+        print("text_response",type(response))
+        return response
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
