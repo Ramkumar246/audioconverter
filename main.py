@@ -1,64 +1,89 @@
-from typing import Union
-from fastapi import FastAPI,HTTPException
-from pymongo import MongoClient
-from pydantic import BaseModel
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+import shutil
+import os
+from googletrans import Translator
+from gtts import gTTS
+import speech_recognition as sr
 
 app = FastAPI()
 
-# Replace the connection string with your MongoDB Atlas connection string
-connection_string = "mongodb+srv://ramkumar:Ys9DnjTKnxkH0mXM@cluster0.gd6hvr9.mongodb.net/"
+# Directory to store uploaded files
+UPLOAD_DIR = "uploads"
 
-# Create a MongoClient instance
-client = MongoClient(connection_string)
+origins = [
+    "*" # Add more origins if necessary
+]
 
-# Access your database
-db = client.mydatabase  # Replace "mydatabase" with your database name
-collection = db['mycollection']
-
-
-class user(BaseModel):
-    name: str
-    id: str
-
-@app.post("/mongodata/")
-def mongodata(name: str, id: str):
-    user = {"name": name, "id": id}
-    inserted_document = collection.insert_one(user)
-    print("Inserted document ID:", inserted_document.inserted_id)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-@app.delete("/mongodatadelete/{document_id}")
-def delete_document(document_id: str):
-    # Find the document with the specified ID
-    result = collection.delete_one({"id": document_id})
+# Function to translate text to Tamil using Google Translate
+def translate_to_tamil(text):
+    translator = Translator()
+    translated_text = translator.translate(text, src='en', dest='ta')
+    print("translated_text",translated_text)
+    return translated_text.text
 
-    # Check if the document was found and deleted
-    if result.deleted_count == 1:
-        return {"message": f"Document with ID {document_id} deleted successfully"}
-    else:
-        raise HTTPException(status_code=404, detail=f"Document with ID {document_id} not found")
+def recognize_speech(audio_file):
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(audio_file) as source:
+        audio_data = recognizer.record(source)
+        # Use Google Web Speech API for speech recognition
+        try:
+            # Recognize the speech using Google Web Speech API
+            text = recognizer.recognize_google(audio_data, language='en-US')
+            return text
+        except sr.UnknownValueError:
+            print("Google Web Speech API could not understand the audio")
+            return None
+        except sr.RequestError as e:
+            print("Could not request results from Google Web Speech API; {0}".format(e))
+            return None
+
+# Function to convert Tamil text to audio using Google Text-to-Speech
+def text_to_speech_tamil(text, output_file):
+    tts = gTTS(text=text, lang='ta')
+    tts.save(output_file)
+
+# Route to handle file upload and translation
+@app.post("/translate/")
+async def translate_audio(file: UploadFile = File(...)):
+    try:
+        # Create the uploads directory if it doesn't exist
+        if not os.path.exists(UPLOAD_DIR):
+            os.makedirs(UPLOAD_DIR)
+
+        # Save the uploaded audio file
+        file_path = os.path.join(UPLOAD_DIR, file.filename)
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Recognize speech from the uploaded audio file (implement this)
+        english_text = recognize_speech(file_path)
+
+        # Dummy text for demonstration
+        # english_text = "This is a dummy English text."
+
+        # Translate the English text to Tamil using Google Translate
+        tamil_text = translate_to_tamil(english_text)
+        print("tamil_text",tamil_text)
+        output_audio_file = os.path.join(UPLOAD_DIR, "translated_audio.mp3")
+        text_to_speech_tamil(tamil_text, output_audio_file)
+
+        # Return the translated audio file
+        return FileResponse(output_audio_file, media_type="audio/mp3")
+        # Convert the translated Tamil text to audio (implement this)
+        # output_audio_file = os.path.join(UPLOAD_DIR, "translated_audio.mp3")
+        # text_to_speech_tamil(tamil_text, output_audio_file)
 
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
-
-
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": "hi man"}
-
-
-def calculate_sum_of_digits(number: int) -> int:
-    total = 0
-    # Extract individual digits and sum them
-    while number:
-        total += number % 10
-        number //= 10
-    return total
-
-
-@app.get("/calculate-sum/{numbers}")
-def calculate_sum(numbers: int):
-    result = calculate_sum_of_digits(numbers)
-    return {"sum": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
