@@ -132,7 +132,6 @@ async def translate_text(input_text: TextInput):
 
         # Return the translated audio file
         response = FileResponse(output_text_audio_file, media_type="audio/mp3")
-        print("text_response",type(response))
         return response
     except Exception as e:
         print(f"Error: {e}")
